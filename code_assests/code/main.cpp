@@ -16,15 +16,15 @@ Description: Main file tracks state for centipede game
 using namespace sf;
 
 // Be careful changing window width and height and DO NOT maximize the window the scaling will be thrown off. Adjust window size here.
-const float WINDOW_WIDTH = 1280.0f;
-const float WINDOW_HEIGHT = 720.0f;
+const float WINDOW_WIDTH = 1280.0f; // needs to be bigger than 800.0f
+const float WINDOW_HEIGHT = 720.0f; // needs to be bigger than 600.0f
 const float PLAYER_SPEED = 0.3f;
 const float MIN_DISTANCE = 50.0f;
 
 
 // BETWEEN THESE DASHES ARE CLASSES/ENUMS USED IN THE MAIN FUNCTION. HAD TROUBLE IMPLEMENTING THEM IN SEPERATE FILES AND I WAS LOSING TIME. BUT THE BULLET CLASS WORKED JUST FINE HAHA //
 /*----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-enum GameState { START_MENU, PLAYING, GAME_OVER };
+enum GameState { START_MENU, PLAYING };
 
 
 class Mushroom {
@@ -33,26 +33,29 @@ private:
     int health;
 
 public:
-    Mushroom(float x, float y, sf::Texture& fullTexture) : health(3) {
+    Mushroom(float x, float y, sf::Texture& fullTexture) : health(4) {
         mushroomSprite.setTexture(fullTexture);  // Set the texture passed to the constructor
         mushroomSprite.setPosition(x, y);    // Set the position of the mushroom
     }
 
     void update() {
-        mushroomSprite.setPosition(mushroomSprite.getPosition());  // allows for me to update position later
+        mushroomSprite.setPosition(mushroomSprite.getPosition());  // Allows for me to update position later
     }
 
     void takeDamage() {
         health--;
 
         if (health <= 0) {
-            mushroomSprite.setPosition(-100, -100);  // if dead move off screen
+            mushroomSprite.setPosition(-100, -100);  // If dead move off screen
         }
         else if (health == 1) {
             mushroomSprite.setColor(sf::Color::Red);
         }
         else if (health == 2) {
             mushroomSprite.setColor(sf::Color::Yellow);
+        }
+        else if (health == 3) {
+            mushroomSprite.setColor(sf::Color::Green);
         }
     }
 
@@ -126,6 +129,10 @@ public:
     sf::Sprite& getShape() {
         return spiderSprite;
     }
+
+    void setPosition(float x, float y) {
+        spiderSprite.setPosition(x, y);
+    }
 };
 
 
@@ -140,6 +147,10 @@ float distance(const sf::Vector2f& point1, const sf::Vector2f& point2) {
 
 bool checkCollisionBtwBullMush(const sf::RectangleShape& bullet, const sf::Sprite& mushroom) {
     return bullet.getGlobalBounds().intersects(mushroom.getGlobalBounds());
+}
+
+bool checkCollisionBtwBulletAndSpider(const sf::RectangleShape& bullet, const sf::Sprite& spider) {
+    return bullet.getGlobalBounds().intersects(spider.getGlobalBounds());
 }
 
 int main()
@@ -205,23 +216,38 @@ int main()
     // Random number generator for mushroom placement
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> distX(5, WINDOW_WIDTH);
-    std::uniform_real_distribution<float> distY(0, WINDOW_HEIGHT - 100);
+    std::uniform_real_distribution<float> distX(0, WINDOW_WIDTH);
+    std::uniform_real_distribution<float> distY(10, WINDOW_HEIGHT - 100);
 
     // Function to reset mushrooms
     auto resetMushrooms = [&]() {
         mushrooms.clear();
         for (int i = 0; i < 30; ++i) {
-            mushrooms.emplace_back(distX(gen), distY(gen), fullMushroom);
+            sf::Vector2f newPosition;
+            bool validPosition = false;
+
+            while (!validPosition) {
+                newPosition = sf::Vector2f(distX(gen), distY(gen));
+                validPosition = true;
+
+                // Check that the new mushroom is far enough from existing mushrooms
+                for (const auto& mushroom : mushrooms) {
+                    if (distance(mushroom.getPosition(), newPosition) < MIN_DISTANCE) {
+                        validPosition = false;
+                        break;
+                    }
+                }
+            }
+
+            mushrooms.push_back(Mushroom(newPosition.x, newPosition.y, fullMushroom));
         }
         };
 
     // Initialize mushrooms
     resetMushrooms();
 
-
-
-    Clock clock;
+    // Used to update the spider man animation
+    sf::Clock clock;
 
     sf::Texture spiderTexture;
     if (!spiderTexture.loadFromFile("assests/SpiderMan.jpg")) {
@@ -229,13 +255,31 @@ int main()
     }
 
     Spider spider(WINDOW_WIDTH / 2, WINDOW_HEIGHT - 25, WINDOW_WIDTH, spiderTexture);
+    bool spiderAlive = true;
+    sf::Clock respawnClock;
 
     int playerLives = 3;  // Player starts with 3 lives
+    int score = 0; // Score starts at 0
     GameState gameState = START_MENU;
 
-    // Did user press Enter to start game?
-    bool startGame = false;
-    bool userJustGotHere = true;
+    // Load font and create text object for displaying lives and score
+    sf::Font font;
+    if (!font.loadFromFile("./assests/KOMIKAP.ttf")) {
+        printf("ERROR: main.cpp | line 247 | Failed to load KOMIKAP.ttf \n");
+    }
+
+    sf::Text livesText;
+    livesText.setFont(font);
+    livesText.setCharacterSize(30);
+    livesText.setFillColor(sf::Color::White);
+    livesText.setPosition(WINDOW_WIDTH - (WINDOW_WIDTH - 100), WINDOW_HEIGHT - (WINDOW_HEIGHT - 5));
+
+    sf::Text scoreText;
+    scoreText.setFont(font);
+    scoreText.Underlined;
+    scoreText.setCharacterSize(30);
+    scoreText.setFillColor(sf::Color::White);
+    scoreText.setPosition(WINDOW_WIDTH - (WINDOW_WIDTH - 1000), WINDOW_HEIGHT - (WINDOW_HEIGHT - 5));
 
     // Main loop
     while (window.isOpen()) {
@@ -257,6 +301,7 @@ int main()
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Enter)) {
                 gameState = PLAYING;
                 playerLives = 3;  // Reset player lives
+                score = 0; // Reset score
                 player.setPosition(playerStartPos);  // Reset player position
                 bullets.clear();  // Clear bullets
                 resetMushrooms();  // Reset mushrooms
@@ -289,6 +334,9 @@ int main()
                 }
             }
 
+            livesText.setString("LIVES: " + std::to_string(playerLives));
+            scoreText.setString("SCORE: " + std::to_string(score));
+
             // Use a separate vector to track bullets to be removed
             std::vector<int> bulletsToRemove;
 
@@ -305,8 +353,18 @@ int main()
                     if (mushroom.isAlive() && checkCollisionBtwBullMush(bullets[i].shape, mushroom.getSprite())) {
                         mushroom.takeDamage();  // Subtract health from the mushroom
                         bulletsToRemove.push_back(i);  // Mark bullet for removal
+                        if (!mushroom.isAlive()) {
+                            score += 4;
+                        }
                         break;  // Exit inner loop after collision
                     }
+                }
+
+                // Check if a bullet hits the spider
+                if (spiderAlive && checkCollisionBtwBulletAndSpider(bullets[i].shape, spider.getShape())) {
+                    spiderAlive = false;
+                    respawnClock.restart();  // Start respawn timer
+                    bulletsToRemove.push_back(i);
                 }
             }
 
@@ -315,10 +373,18 @@ int main()
                 bullets.erase(bullets.begin() + bulletsToRemove[i]);
             }
 
+            // Respawn spider after 2 seconds
+            if (!spiderAlive && respawnClock.getElapsedTime().asSeconds() >= 1.5) {
+                spiderAlive = true;
+                spider.setPosition(distX(gen), WINDOW_HEIGHT - 25);  // Respawn spider
+            }
+
             float deltaTime = clock.restart().asSeconds();
 
             // Update spider movement
-            spider.update(deltaTime);
+            if (spiderAlive) {
+                spider.update(deltaTime);
+            }
 
             // Check for spider collision with mushrooms
             auto removeMushroom = mushrooms.begin();
@@ -338,12 +404,7 @@ int main()
                 player.setPosition(playerStartPos);  // Reset player position to the start
 
                 if (playerLives <= 0) {
-                    // Handle game over
-                    std::cout << "Game Over! Player has no lives left." << std::endl;
                     gameState = START_MENU;  // Go back to start menu
-                }
-                else {
-                    std::cout << "Player collided with spider! Lives left: " << playerLives << std::endl;
                 }
             }
 
@@ -366,7 +427,15 @@ int main()
                 window.draw(bullet.shape);
             }
 
-            spider.draw(window);
+            if (spiderAlive) {
+                spider.draw(window);
+            }
+
+            // Draw the lives text
+            window.draw(livesText);
+
+            // Draw the score text
+            window.draw(scoreText);
 
             // Display everything we drew
             window.display();
