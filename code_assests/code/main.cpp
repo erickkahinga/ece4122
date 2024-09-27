@@ -1,11 +1,12 @@
 /*
 Author: Erick Kahinga
 Class: ECE4122
-Last Date Modified: 9/2724
+Last Date Modified: 9/27/24
 Description: Main file tracks state for centipede game
 */
 
 #include <SFML/Graphics.hpp>
+#include <SFML/System.hpp>
 #include <iostream>
 #include <vector>
 #include <random>
@@ -21,8 +22,10 @@ const float PLAYER_SPEED = 0.3f;
 const float MIN_DISTANCE = 50.0f;
 
 
-// BETWEEN THESE DASHES ARE CLASSES USED IN THE MAIN FUNCTION. HAD TROUBLE IMPLEMENTING THEM IN SEPERATE FILES AND I WAS LOSING TIME. BUT THE BULLET CLASS WORKED JUST FINE HAHA //
+// BETWEEN THESE DASHES ARE CLASSES/ENUMS USED IN THE MAIN FUNCTION. HAD TROUBLE IMPLEMENTING THEM IN SEPERATE FILES AND I WAS LOSING TIME. BUT THE BULLET CLASS WORKED JUST FINE HAHA //
 /*----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+enum GameState { START_MENU, PLAYING, GAME_OVER };
+
 
 class Mushroom {
 private:
@@ -81,7 +84,7 @@ private:
 
 public:
     Spider(float startX, float startY, float windowWidth, sf::Texture& spiderTexture) : directionX(1.0f), hopDistance(50.0f), windowWidth(windowWidth), baseY(startY), hopHeight(150.0f), hopDuration(2.0f) {
-        spiderSprite.setTexture(spiderTexture);  
+        spiderSprite.setTexture(spiderTexture);
         spiderSprite.setPosition(startX, startY);
 
         hopTimer = 0.0f;
@@ -186,7 +189,8 @@ int main()
     // Create player sprite and apply the texture
     sf::Sprite player(playerTexture);
     player.setScale(1.0f, 1.0f);
-    player.setPosition(WINDOW_WIDTH / 2, WINDOW_HEIGHT - 50);
+    sf::Vector2f playerStartPos(WINDOW_WIDTH / 2, WINDOW_HEIGHT - 50);  // Player's starting position
+    player.setPosition(playerStartPos);
 
     // Bullets
     std::vector<Bullet> bullets;
@@ -196,34 +200,26 @@ int main()
         printf("ERROR: main.cpp | line 37 | Failed to load FullMushroom.jpg \n");
     }
 
-    // Random number generation using C++11 <random> library
+    std::vector<Mushroom> mushrooms;
+
+    // Random number generator for mushroom placement
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> distX(5, WINDOW_WIDTH);
     std::uniform_real_distribution<float> distY(0, WINDOW_HEIGHT - 100);
 
-    std::vector<Mushroom> mushrooms;
-
-    // Place 30 mushrooms randomly, ensuring no overlap
-    for (int i = 0; i < 30; ++i) {
-        sf::Vector2f newPosition;
-        bool validPosition = false;
-
-        while (!validPosition) {
-            newPosition = sf::Vector2f(distX(gen), distY(gen));
-            validPosition = true;
-
-            // Check that the new mushroom is far enough from existing mushrooms
-            for (const auto& mushroom : mushrooms) {
-                if (distance(mushroom.getPosition(), newPosition) < MIN_DISTANCE) {
-                    validPosition = false;
-                    break;
-                }
-            }
+    // Function to reset mushrooms
+    auto resetMushrooms = [&]() {
+        mushrooms.clear();
+        for (int i = 0; i < 30; ++i) {
+            mushrooms.emplace_back(distX(gen), distY(gen), fullMushroom);
         }
+        };
 
-        mushrooms.push_back(Mushroom(newPosition.x, newPosition.y, fullMushroom));
-    }
+    // Initialize mushrooms
+    resetMushrooms();
+
+
 
     Clock clock;
 
@@ -233,6 +229,9 @@ int main()
     }
 
     Spider spider(WINDOW_WIDTH / 2, WINDOW_HEIGHT - 25, WINDOW_WIDTH, spiderTexture);
+
+    int playerLives = 3;  // Player starts with 3 lives
+    GameState gameState = START_MENU;
 
     // Did user press Enter to start game?
     bool startGame = false;
@@ -248,19 +247,24 @@ int main()
                 window.close();
         }
 
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Enter) && !startGame && userJustGotHere) {
-            startGame = true;
-            userJustGotHere = false;
-            window.clear();
-            window.display();
-        }
-        else if (userJustGotHere) {
+        if (gameState == START_MENU) {
+            // Display the start menu background
             window.clear();
             window.draw(startMenuBackgroundSprite);
             window.display();
+
+            // Start the game on Enter press
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Enter)) {
+                gameState = PLAYING;
+                playerLives = 3;  // Reset player lives
+                player.setPosition(playerStartPos);  // Reset player position
+                bullets.clear();  // Clear bullets
+                resetMushrooms();  // Reset mushrooms
+            }
         }
 
-        if (startGame) {
+
+        if (gameState == PLAYING) {
             // Player movement
             if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) && player.getPosition().x > 0) {
                 player.move(-PLAYER_SPEED, 0);
@@ -327,6 +331,23 @@ int main()
                 }
             }
 
+
+            // Check for spider collision with player
+            if (spider.getShape().getGlobalBounds().intersects(player.getGlobalBounds())) {
+                playerLives--;  // Decrease player lives by 1
+                player.setPosition(playerStartPos);  // Reset player position to the start
+
+                if (playerLives <= 0) {
+                    // Handle game over
+                    std::cout << "Game Over! Player has no lives left." << std::endl;
+                    gameState = START_MENU;  // Go back to start menu
+                }
+                else {
+                    std::cout << "Player collided with spider! Lives left: " << playerLives << std::endl;
+                }
+            }
+
+
             // Clear screen
             window.clear();
 
@@ -344,7 +365,7 @@ int main()
             for (auto& bullet : bullets) {
                 window.draw(bullet.shape);
             }
-            
+
             spider.draw(window);
 
             // Display everything we drew
