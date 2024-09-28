@@ -18,7 +18,7 @@ using namespace sf;
 // Be careful changing window width and height and DO NOT maximize the window the scaling will be thrown off. Adjust window size here.
 const float WINDOW_WIDTH = 1280.0f; // needs to be bigger than 800.0f
 const float WINDOW_HEIGHT = 720.0f; // needs to be bigger than 600.0f
-const float PLAYER_SPEED = 0.3f;
+const float PLAYER_SPEED = 0.25f;
 const float MIN_DISTANCE = 50.0f;
 
 
@@ -59,7 +59,7 @@ public:
         }
     }
 
-    sf::Sprite& getSprite() {
+    const sf::Sprite& getSprite() const {
         return mushroomSprite;
     }
 
@@ -126,7 +126,7 @@ public:
         window.draw(spiderSprite);
     }
 
-    sf::Sprite& getShape() {
+    sf::Sprite& getSprite() {
         return spiderSprite;
     }
 
@@ -361,8 +361,9 @@ int main()
                 }
 
                 // Check if a bullet hits the spider
-                if (spiderAlive && checkCollisionBtwBulletAndSpider(bullets[i].shape, spider.getShape())) {
+                if (spiderAlive && checkCollisionBtwBulletAndSpider(bullets[i].shape, spider.getSprite())) {
                     spiderAlive = false;
+                    score += 600;
                     respawnClock.restart();  // Start respawn timer
                     bulletsToRemove.push_back(i);
                 }
@@ -389,7 +390,7 @@ int main()
             // Check for spider collision with mushrooms
             auto removeMushroom = mushrooms.begin();
             while (removeMushroom != mushrooms.end()) {
-                if (spider.getShape().getGlobalBounds().intersects(removeMushroom->getSprite().getGlobalBounds())) {
+                if (spider.getSprite().getGlobalBounds().intersects(removeMushroom->getSprite().getGlobalBounds())) {
                     removeMushroom = mushrooms.erase(removeMushroom);  // Remove mushroom if spider collides with it
                 }
                 else {
@@ -399,7 +400,7 @@ int main()
 
 
             // Check for spider collision with player
-            if (spider.getShape().getGlobalBounds().intersects(player.getGlobalBounds())) {
+            if (spider.getSprite().getGlobalBounds().intersects(player.getGlobalBounds())) {
                 playerLives--;  // Decrease player lives by 1
                 player.setPosition(playerStartPos);  // Reset player position to the start
 
